@@ -10,22 +10,14 @@ interface DevAdminPanelProps {
 
 export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
-  const fetchUsers = async () => {
-    setIsLoading(true);
-    const globalUsers = await CloudService.getAllUsers();
-    setUsers(globalUsers);
-    setIsLoading(false);
-  };
-
   useEffect(() => {
-    fetchUsers();
+    setUsers(CloudService.getAllUsers());
   }, []);
 
-  const handleDeleteUser = async (userId: string) => {
+  const handleDeleteUser = (userId: string) => {
     if (userId === 'dev-master') {
       alert("Cannot delete the master dev account.");
       return;
@@ -33,11 +25,11 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
     if (!confirm('Are you absolutely sure you want to delete this user? This cannot be undone.')) return;
     
     const updated = users.filter(u => u.id !== userId);
-    await CloudService.updateUsers(updated);
+    CloudService.updateUsers(updated);
     setUsers(updated);
   };
 
-  const handleUpdatePassword = async (userId: string) => {
+  const handleUpdatePassword = (userId: string) => {
     if (!newPassword.trim()) return;
     
     const updated = users.map(u => {
@@ -47,7 +39,7 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
       return u;
     });
     
-    await CloudService.updateUsers(updated);
+    CloudService.updateUsers(updated);
     setUsers(updated);
     setEditingUserId(null);
     setNewPassword('');
@@ -65,9 +57,6 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
           </div>
           <h2 className="text-4xl font-black text-slate-900 mb-2 tracking-tight">FamLink Dev Panel</h2>
           <p className="text-red-600 font-bold uppercase tracking-widest text-xs">God Mode Active</p>
-          <Button onClick={fetchUsers} size="sm" variant="outline" className="mt-4">
-            {isLoading ? 'Syncing...' : 'Force Global Refresh'}
-          </Button>
         </header>
 
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden border border-red-100">
@@ -76,7 +65,7 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
               All Registered Accounts
               <span className="bg-red-600 text-white text-xs px-2 py-1 rounded-full">{users.length}</span>
             </h3>
-            {isLoading && <span className="text-xs text-red-500 animate-pulse font-bold">CONTACTING GLOBAL RELAY...</span>}
+            <p className="text-xs text-slate-400 italic">Caution: Actions here are final.</p>
           </div>
 
           <div className="overflow-x-auto">
