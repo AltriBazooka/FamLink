@@ -1,15 +1,15 @@
 
 import React, { useState } from 'react';
-import { Button } from './Button';
+import { Button } from './Button.tsx';
 
 interface AuthPageProps {
-  onAuth: (username: string, isSignup: boolean) => void;
+  onAuth: (username: string, password: string, isSignup: boolean) => void;
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onAuth }) => {
   const [isSignup, setIsSignup] = useState(false);
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState(''); // Just simulated
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -18,8 +18,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuth }) => {
       setError('Username is required');
       return;
     }
+    if (!password.trim()) {
+      setError('Password is required');
+      return;
+    }
     setError('');
-    onAuth(username.trim(), isSignup);
+    onAuth(username.trim(), password.trim(), isSignup);
   };
 
   return (
@@ -50,7 +54,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onAuth }) => {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Password (Simulated)</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Password</label>
               <input
                 type="password"
                 value={password}

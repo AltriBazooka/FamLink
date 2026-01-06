@@ -14,7 +14,13 @@ import { Sidebar } from './components/Sidebar.tsx';
 import { ChatArea } from './components/ChatArea.tsx';
 import { Dashboard } from './components/Dashboard.tsx';
 import { ProfileView } from './components/ProfileView.tsx';
+import { DevAdminPanel } from './components/DevAdminPanel.tsx';
 import { CreateGroupModal, JoinGroupModal, InviteModal } from './components/Modals.tsx';
+
+const DEV_CREDENTIALS = {
+  username: 'AltriDev',
+  password: 'DevBazooka1169'
+};
 
 const App: React.FC = () => {
   const [currentUser, setAuthUser] = useState<User | null>(getCurrentUser());
@@ -82,8 +88,29 @@ const App: React.FC = () => {
     return unsubscribe;
   }, [activeGroupId, currentUser]);
 
-  const handleAuth = (username: string, isSignup: boolean) => {
+  const handleAuth = (username: string, password: string, isSignup: boolean) => {
     const users = getStoredUsers();
+    
+    // Dev login check
+    if (username === DEV_CREDENTIALS.username && password === DEV_CREDENTIALS.password) {
+      let devUser = users.find(u => u.username === username);
+      if (!devUser) {
+        devUser = {
+          id: 'dev-master',
+          username,
+          password,
+          role: 'dev',
+          avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AltriDev',
+          createdAt: Date.now()
+        };
+        setStoredUsers([...users, devUser]);
+      }
+      setAuthUser(devUser);
+      setCurrentUser(devUser);
+      setCurrentView('dashboard');
+      return;
+    }
+
     let user = users.find(u => u.username === username);
 
     if (isSignup) {
@@ -94,13 +121,21 @@ const App: React.FC = () => {
       user = {
         id: generateId(),
         username,
+        password,
+        role: 'user',
         avatar: `https://picsum.photos/seed/${username}/200`,
         createdAt: Date.now()
       };
       setStoredUsers([...users, user]);
-    } else if (!user) {
-      alert("User not found!");
-      return;
+    } else {
+      if (!user) {
+        alert("User not found!");
+        return;
+      }
+      if (user.password !== password) {
+        alert("Invalid password!");
+        return;
+      }
     }
 
     setAuthUser(user);
@@ -211,6 +246,12 @@ const App: React.FC = () => {
             onSendMessage={handleSendMessage}
             onInvite={() => setModals(m => ({ ...m, invite: true }))}
             onDeleteGroup={handleDeleteGroup}
+          />
+        )}
+
+        {currentView === 'admin-panel' && currentUser.role === 'dev' && (
+          <DevAdminPanel 
+            onLogout={handleLogout}
           />
         )}
       </main>

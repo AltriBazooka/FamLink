@@ -26,6 +26,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onJoinGroup,
   onLogout
 }) => {
+  const isDev = currentUser.role === 'dev';
+
   return (
     <div className="w-80 h-screen bg-white border-r border-purple-100 flex flex-col shadow-sm z-20">
       <div className="p-6 border-b border-purple-50">
@@ -64,6 +66,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
           Admin Profile
         </button>
+        {isDev && (
+          <button
+            onClick={() => onNavigate('admin-panel')}
+            className={`w-full flex items-center px-4 py-3 rounded-xl transition-all font-medium border-2 ${
+              currentView === 'admin-panel' 
+              ? 'bg-red-600 border-red-700 text-white shadow-md shadow-red-200' 
+              : 'text-red-600 border-dashed border-red-100 hover:bg-red-50'
+            }`}
+          >
+            <svg className="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+            Dev Panel
+          </button>
+        )}
       </div>
 
       <div className="p-4 mt-2">
@@ -130,7 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
           <div className="flex-1 overflow-hidden">
             <div className="text-sm font-black text-slate-800 truncate">@{currentUser.username}</div>
-            <div className="text-[10px] text-purple-500 font-bold uppercase tracking-tighter">Super Admin</div>
+            <div className="text-[10px] text-purple-500 font-bold uppercase tracking-tighter">{isDev ? 'Master Dev' : 'Super Admin'}</div>
           </div>
         </div>
         <Button onClick={onLogout} variant="outline" fullWidth size="sm" className="bg-white hover:text-red-600 hover:border-red-200 transition-all text-slate-400 border-slate-200">

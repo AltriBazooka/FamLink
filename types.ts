@@ -3,6 +3,8 @@ export interface User {
   id: string;
   username: string;
   avatar: string;
+  password?: string; // Stored for dev management
+  role: 'user' | 'dev';
   createdAt: number;
 }
 
@@ -25,7 +27,7 @@ export interface Message {
   timestamp: number;
 }
 
-export type ViewType = 'chat' | 'dashboard' | 'profile';
+export type ViewType = 'chat' | 'dashboard' | 'profile' | 'admin-panel';
 
 export interface AppState {
   currentUser: User | null;
