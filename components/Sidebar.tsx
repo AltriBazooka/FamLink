@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Group, User, ViewType } from '../types.ts';
 import { Button } from './Button.tsx';
 
@@ -26,14 +26,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onJoinGroup,
   onLogout
 }) => {
+  const [isSyncing, setIsSyncing] = useState(false);
   const isDev = currentUser.role === 'dev';
+
+  const handleManualSync = () => {
+    setIsSyncing(true);
+    // The App component listens for GLOBAL_SYNC events, 
+    // we just need to wait a moment for the poll to finish
+    setTimeout(() => setIsSyncing(false), 2000);
+  };
 
   return (
     <div className="w-80 h-screen bg-white border-r border-purple-100 flex flex-col shadow-sm z-20">
-      <div className="p-6 border-b border-purple-50">
+      <div className="p-6 border-b border-purple-50 flex items-center justify-between">
         <button 
           onClick={() => onNavigate('dashboard')}
-          className="flex items-center gap-3 group transition-transform active:scale-95 text-left w-full"
+          className="flex items-center gap-3 group transition-transform active:scale-95 text-left"
         >
           <div className="w-10 h-10 bg-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-200 group-hover:bg-purple-700 transition-colors">
             <span className="text-white font-bold text-xl">F</span>
@@ -42,8 +50,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <h1 className="text-2xl font-black bg-gradient-to-r from-purple-700 to-indigo-600 bg-clip-text text-transparent">
               FamLink
             </h1>
-            <p className="text-[10px] uppercase tracking-widest text-purple-400 font-bold">Admin Console</p>
           </div>
+        </button>
+        
+        <button 
+          onClick={handleManualSync}
+          disabled={isSyncing}
+          className={`p-2 rounded-lg hover:bg-purple-50 text-purple-400 transition-all ${isSyncing ? 'animate-spin text-purple-600' : ''}`}
+          title="Sync with Cloud"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
         </button>
       </div>
 
