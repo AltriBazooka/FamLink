@@ -1,9 +1,7 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, Group, Message, ViewType } from './types.ts';
 import { 
-  getStoredUsers, 
-  setStoredUsers, 
   getCurrentUser, 
   setCurrentUser,
   generateId
@@ -36,42 +34,38 @@ const App: React.FC = () => {
     error: string | null;
   }>({ create: false, join: false, invite: false, error: null });
 
-  // Initialize data from "Cloud"
-  useEffect(() => {
-    if (currentUser) {
-      CloudService.getAllUserGroups(currentUser.id).then(setGroups);
-    }
-  }, [currentUser]);
-
-  // Handle active group messages
-  useEffect(() => {
+  const syncState = useCallback(async () => {
+    if (!currentUser) return;
+    const userGroups = await CloudService.getAllUserGroups(currentUser.id);
+    setGroups(userGroups);
     if (activeGroupId) {
-      CloudService.getGroupMessages(activeGroupId).then(setMessages);
+      const groupMsgs = await CloudService.getGroupMessages(activeGroupId);
+      setMessages(groupMsgs);
     }
-  }, [activeGroupId]);
+  }, [currentUser, activeGroupId]);
 
-  // SUBSCRIBE TO REAL-TIME CLOUD UPDATES
+  // Initial Sync
+  useEffect(() => {
+    syncState();
+  }, [syncState]);
+
+  // SUBSCRIBE TO REAL-TIME & POLL UPDATES
   useEffect(() => {
     const unsubscribe = CloudService.subscribe((event) => {
       switch (event.type) {
         case 'MESSAGE':
           const msg = event.payload as Message;
           if (msg.groupId === activeGroupId) {
-            setMessages(prev => [...prev, msg]);
-          }
-          break;
-        case 'GROUP_UPDATE':
-          if (currentUser && event.payload.members.includes(currentUser.id)) {
-            setGroups(prev => {
-              const exists = prev.find(g => g.id === event.payload.id);
-              return exists ? prev.map(g => g.id === event.payload.id ? event.payload : g) : [...prev, event.payload];
+            setMessages(prev => {
+              if (prev.find(m => m.id === msg.id)) return prev;
+              return [...prev, msg].sort((a, b) => a.timestamp - b.timestamp);
             });
           }
           break;
+        case 'GLOBAL_SYNC':
         case 'USER_JOINED':
-          if (currentUser) {
-            CloudService.getAllUserGroups(currentUser.id).then(setGroups);
-          }
+        case 'GROUP_UPDATE':
+          syncState();
           break;
         case 'GROUP_DELETED':
           const deletedId = event.payload as string;
@@ -79,23 +73,23 @@ const App: React.FC = () => {
           if (activeGroupId === deletedId) {
             setActiveGroupId(null);
             setCurrentView('dashboard');
-            alert("This group has been dissolved by the administrator.");
+            alert("Group dissolved.");
           }
           break;
       }
     });
 
     return unsubscribe;
-  }, [activeGroupId, currentUser]);
+  }, [activeGroupId, currentUser, syncState]);
 
-  const handleAuth = (username: string, password: string, isSignup: boolean) => {
-    const users = getStoredUsers();
+  const handleAuth = async (username: string, password: string, isSignup: boolean) => {
+    // 1. Check Global Cloud for User
+    let user = await CloudService.findUser(username);
     
     // Dev login check
     if (username === DEV_CREDENTIALS.username && password === DEV_CREDENTIALS.password) {
-      let devUser = users.find(u => u.username === username);
-      if (!devUser) {
-        devUser = {
+      if (!user) {
+        user = {
           id: 'dev-master',
           username,
           password,
@@ -103,19 +97,17 @@ const App: React.FC = () => {
           avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AltriDev',
           createdAt: Date.now()
         };
-        setStoredUsers([...users, devUser]);
+        await CloudService.registerUser(user);
       }
-      setAuthUser(devUser);
-      setCurrentUser(devUser);
+      setAuthUser(user);
+      setCurrentUser(user);
       setCurrentView('dashboard');
       return;
     }
 
-    let user = users.find(u => u.username === username);
-
     if (isSignup) {
       if (user) {
-        alert("Username already taken!");
+        alert("Username already taken globally!");
         return;
       }
       user = {
@@ -126,10 +118,10 @@ const App: React.FC = () => {
         avatar: `https://picsum.photos/seed/${username}/200`,
         createdAt: Date.now()
       };
-      setStoredUsers([...users, user]);
+      await CloudService.registerUser(user);
     } else {
       if (!user) {
-        alert("User not found!");
+        alert("User not found on the network!");
         return;
       }
       if (user.password !== password) {
@@ -167,8 +159,7 @@ const App: React.FC = () => {
       return;
     }
 
-    const myGroups = await CloudService.getAllUserGroups(currentUser.id);
-    setGroups(myGroups);
+    await syncState();
     setActiveGroupId(group.id);
     setCurrentView('chat');
     setModals(m => ({ ...m, join: false, error: null }));
@@ -177,7 +168,7 @@ const App: React.FC = () => {
   const handleSendMessage = async (text: string) => {
     if (!currentUser || !activeGroupId) return;
     const msg = await CloudService.sendMessage(activeGroupId, currentUser, text);
-    setMessages(prev => [...prev, msg]);
+    setMessages(prev => [...prev, msg].sort((a, b) => a.timestamp - b.timestamp));
   };
 
   const handleDeleteGroup = async (groupId: string) => {
@@ -190,11 +181,12 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateProfile = (newUsername: string) => {
+  const handleUpdateProfile = async (newUsername: string) => {
     if (!currentUser) return;
+    const allUsers = CloudService.getAllUsers();
     const updatedUser = { ...currentUser, username: newUsername };
-    const users = getStoredUsers().map(u => u.id === updatedUser.id ? updatedUser : u);
-    setStoredUsers(users);
+    const newUsers = allUsers.map(u => u.id === updatedUser.id ? updatedUser : u);
+    CloudService.updateUsers(newUsers);
     setAuthUser(updatedUser);
     setCurrentUser(updatedUser);
   };

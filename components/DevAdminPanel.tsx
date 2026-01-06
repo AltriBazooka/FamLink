@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User } from '../types.ts';
-import { getStoredUsers, setStoredUsers } from '../lib/storage.ts';
+import { CloudService } from '../lib/cloud.ts';
 import { Button } from './Button.tsx';
 
 interface DevAdminPanelProps {
@@ -14,7 +14,7 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
   const [newPassword, setNewPassword] = useState('');
 
   useEffect(() => {
-    setUsers(getStoredUsers());
+    setUsers(CloudService.getAllUsers());
   }, []);
 
   const handleDeleteUser = (userId: string) => {
@@ -25,7 +25,7 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
     if (!confirm('Are you absolutely sure you want to delete this user? This cannot be undone.')) return;
     
     const updated = users.filter(u => u.id !== userId);
-    setStoredUsers(updated);
+    CloudService.updateUsers(updated);
     setUsers(updated);
   };
 
@@ -39,7 +39,7 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
       return u;
     });
     
-    setStoredUsers(updated);
+    CloudService.updateUsers(updated);
     setUsers(updated);
     setEditingUserId(null);
     setNewPassword('');
@@ -142,18 +142,6 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
                 ))}
               </tbody>
             </table>
-          </div>
-        </div>
-
-        <div className="mt-10 p-6 bg-red-50 rounded-3xl border border-red-100 flex items-center gap-6">
-          <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-red-600">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          </div>
-          <div>
-            <h4 className="font-bold text-red-900">Developer Policy</h4>
-            <p className="text-red-700/70 text-sm leading-relaxed">
-              Account data is stored in the simulated cloud. You can see passwords plain-text because security is bypassed for AltriDev. Use your power responsibly to maintain the network.
-            </p>
           </div>
         </div>
       </div>
