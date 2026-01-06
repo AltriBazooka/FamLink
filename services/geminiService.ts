@@ -1,8 +1,17 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Message } from "../types";
+import { Message } from "../types.ts";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
+// Accessing process.env safely to prevent crashes in ESM environments
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || "";
+  } catch {
+    return "";
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const summarizeChat = async (messages: Message[]): Promise<string> => {
   if (messages.length === 0) return "No messages to summarize.";

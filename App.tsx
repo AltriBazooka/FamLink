@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Group, Message, AppState, ViewType } from './types';
+import { User, Group, Message, AppState, ViewType } from './types.ts';
 import { 
   getStoredUsers, 
   setStoredUsers, 
@@ -12,13 +12,13 @@ import {
   setCurrentUser,
   generateId,
   generateInviteCode
-} from './lib/storage';
-import { AuthPage } from './components/AuthPage';
-import { Sidebar } from './components/Sidebar';
-import { ChatArea } from './components/ChatArea';
-import { Dashboard } from './components/Dashboard';
-import { ProfileView } from './components/ProfileView';
-import { CreateGroupModal, JoinGroupModal, InviteModal } from './components/Modals';
+} from './lib/storage.ts';
+import { AuthPage } from './components/AuthPage.tsx';
+import { Sidebar } from './components/Sidebar.tsx';
+import { ChatArea } from './components/ChatArea.tsx';
+import { Dashboard } from './components/Dashboard.tsx';
+import { ProfileView } from './components/ProfileView.tsx';
+import { CreateGroupModal, JoinGroupModal, InviteModal } from './components/Modals.tsx';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>({

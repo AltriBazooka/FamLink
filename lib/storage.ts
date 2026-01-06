@@ -1,5 +1,5 @@
 
-import { User, Group, Message } from '../types';
+import { User, Group, Message } from '../types.ts';
 
 const STORAGE_KEYS = {
   USERS: 'famlink_users_v1',
