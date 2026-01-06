@@ -56,18 +56,26 @@ interface JoinGroupModalProps {
 
 export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({ onClose, onJoin, error: serverError }) => {
   const [code, setCode] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleJoin = async () => {
+    setIsSearching(true);
+    await onJoin(code);
+    setIsSearching(false);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
       <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
         <h2 className="text-2xl font-bold text-slate-900 mb-1">Join a Group</h2>
-        <p className="text-slate-500 mb-6 text-sm">Enter the invite code you received.</p>
+        <p className="text-slate-500 mb-6 text-sm">Searching the global FamLink network...</p>
         
         <div>
           <label className="block text-sm font-semibold text-slate-700 mb-1">Invite Code</label>
           <input 
             autoFocus
-            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none uppercase font-mono tracking-widest text-center text-xl"
+            disabled={isSearching}
+            className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none uppercase font-mono tracking-widest text-center text-xl disabled:opacity-50"
             value={code}
             maxLength={6}
             onChange={e => setCode(e.target.value.toUpperCase())}
@@ -75,10 +83,13 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({ onClose, onJoin,
           />
         </div>
         {serverError && <p className="text-red-500 text-sm mt-2">{serverError}</p>}
+        {isSearching && <p className="text-purple-600 text-xs font-bold mt-2 animate-pulse">Checking global registry...</p>}
 
         <div className="flex gap-3 mt-8">
-          <Button variant="outline" fullWidth onClick={onClose}>Cancel</Button>
-          <Button fullWidth disabled={code.length < 3} onClick={() => onJoin(code)}>Join Group</Button>
+          <Button variant="outline" fullWidth onClick={onClose} disabled={isSearching}>Cancel</Button>
+          <Button fullWidth disabled={code.length < 3 || isSearching} onClick={handleJoin}>
+            {isSearching ? 'Joining...' : 'Join Group'}
+          </Button>
         </div>
       </div>
     </div>
