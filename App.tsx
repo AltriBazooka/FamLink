@@ -1,18 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Group, Message, AppState, ViewType } from './types.ts';
+import { User, Group, Message, ViewType } from './types.ts';
 import { 
   getStoredUsers, 
   setStoredUsers, 
-  getStoredGroups, 
-  setStoredGroups, 
-  getStoredMessages, 
-  setStoredMessages, 
   getCurrentUser, 
   setCurrentUser,
-  generateId,
-  generateInviteCode
+  generateId
 } from './lib/storage.ts';
+import { CloudService } from './lib/cloud.ts';
 import { AuthPage } from './components/AuthPage.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { ChatArea } from './components/ChatArea.tsx';
@@ -21,13 +17,11 @@ import { ProfileView } from './components/ProfileView.tsx';
 import { CreateGroupModal, JoinGroupModal, InviteModal } from './components/Modals.tsx';
 
 const App: React.FC = () => {
-  const [state, setState] = useState<AppState>({
-    currentUser: getCurrentUser(),
-    groups: getStoredGroups(),
-    messages: getStoredMessages(),
-    activeGroupId: null,
-    currentView: 'dashboard'
-  });
+  const [currentUser, setAuthUser] = useState<User | null>(getCurrentUser());
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
 
   const [modals, setModals] = useState<{
     create: boolean;
@@ -36,18 +30,57 @@ const App: React.FC = () => {
     error: string | null;
   }>({ create: false, join: false, invite: false, error: null });
 
-  // Persistence effects
+  // Initialize data from "Cloud"
   useEffect(() => {
-    setStoredGroups(state.groups);
-  }, [state.groups]);
+    if (currentUser) {
+      CloudService.getAllUserGroups(currentUser.id).then(setGroups);
+    }
+  }, [currentUser]);
 
+  // Handle active group messages
   useEffect(() => {
-    setStoredMessages(state.messages);
-  }, [state.messages]);
+    if (activeGroupId) {
+      CloudService.getGroupMessages(activeGroupId).then(setMessages);
+    }
+  }, [activeGroupId]);
 
+  // SUBSCRIBE TO REAL-TIME CLOUD UPDATES
   useEffect(() => {
-    setCurrentUser(state.currentUser);
-  }, [state.currentUser]);
+    const unsubscribe = CloudService.subscribe((event) => {
+      switch (event.type) {
+        case 'MESSAGE':
+          const msg = event.payload as Message;
+          if (msg.groupId === activeGroupId) {
+            setMessages(prev => [...prev, msg]);
+          }
+          break;
+        case 'GROUP_UPDATE':
+          if (currentUser && event.payload.members.includes(currentUser.id)) {
+            setGroups(prev => {
+              const exists = prev.find(g => g.id === event.payload.id);
+              return exists ? prev.map(g => g.id === event.payload.id ? event.payload : g) : [...prev, event.payload];
+            });
+          }
+          break;
+        case 'USER_JOINED':
+          if (currentUser) {
+            CloudService.getAllUserGroups(currentUser.id).then(setGroups);
+          }
+          break;
+        case 'GROUP_DELETED':
+          const deletedId = event.payload as string;
+          setGroups(prev => prev.filter(g => g.id !== deletedId));
+          if (activeGroupId === deletedId) {
+            setActiveGroupId(null);
+            setCurrentView('dashboard');
+            alert("This group has been dissolved by the administrator.");
+          }
+          break;
+      }
+    });
+
+    return unsubscribe;
+  }, [activeGroupId, currentUser]);
 
   const handleAuth = (username: string, isSignup: boolean) => {
     const users = getStoredUsers();
@@ -70,163 +103,111 @@ const App: React.FC = () => {
       return;
     }
 
-    setState(prev => ({ ...prev, currentUser: user, currentView: 'dashboard' }));
-  };
-
-  const handleUpdateProfile = (newUsername: string) => {
-    if (!state.currentUser) return;
-    
-    const updatedUser = { ...state.currentUser, username: newUsername };
-    const users = getStoredUsers().map(u => u.id === updatedUser.id ? updatedUser : u);
-    setStoredUsers(users);
-    
-    setState(prev => ({ ...prev, currentUser: updatedUser }));
+    setAuthUser(user);
+    setCurrentUser(user);
+    setCurrentView('dashboard');
   };
 
   const handleLogout = () => {
-    setState(prev => ({ ...prev, currentUser: null, activeGroupId: null, currentView: 'dashboard' }));
+    setAuthUser(null);
+    setCurrentUser(null);
+    setActiveGroupId(null);
   };
 
-  const handleCreateGroup = (name: string, description: string) => {
-    if (!state.currentUser) return;
-
-    const newGroup: Group = {
-      id: generateId(),
-      name,
-      description,
-      adminId: state.currentUser.id,
-      members: [state.currentUser.id],
-      inviteCode: generateInviteCode(),
-      createdAt: Date.now()
-    };
-
-    setState(prev => ({
-      ...prev,
-      groups: [...prev.groups, newGroup],
-      activeGroupId: newGroup.id,
-      currentView: 'chat'
-    }));
+  const handleCreateGroup = async (name: string, description: string) => {
+    if (!currentUser) return;
+    const newGroup = await CloudService.createGroup(name, description, currentUser.id);
+    setGroups(prev => [...prev, newGroup]);
+    setActiveGroupId(newGroup.id);
+    setCurrentView('chat');
     setModals(m => ({ ...m, create: false }));
   };
 
-  const handleDeleteGroup = (groupId: string) => {
-    if (!state.currentUser) return;
-    const group = state.groups.find(g => g.id === groupId);
-    if (!group || group.adminId !== state.currentUser.id) return;
-
-    if (!confirm(`Are you sure you want to dissolve "${group.name}"? All messages will be lost.`)) return;
-
-    setState(prev => ({
-      ...prev,
-      groups: prev.groups.filter(g => g.id !== groupId),
-      messages: prev.messages.filter(m => m.groupId !== groupId),
-      activeGroupId: null,
-      currentView: 'dashboard'
-    }));
-  };
-
-  const handleJoinGroup = (code: string) => {
-    if (!state.currentUser) return;
-
-    const group = state.groups.find(g => g.inviteCode === code);
+  const handleJoinGroup = async (code: string) => {
+    if (!currentUser) return;
+    const group = await CloudService.joinGroupByCode(code, currentUser.id);
+    
     if (!group) {
       setModals(m => ({ ...m, error: "Invalid invite code" }));
       return;
     }
 
-    if (group.members.includes(state.currentUser.id)) {
-      setModals(m => ({ ...m, error: "You are already a member of this group" }));
-      return;
-    }
-
-    const updatedGroups = state.groups.map(g => {
-      if (g.id === group.id) {
-        return { ...g, members: [...g.members, state.currentUser!.id] };
-      }
-      return g;
-    });
-
-    setState(prev => ({
-      ...prev,
-      groups: updatedGroups,
-      activeGroupId: group.id,
-      currentView: 'chat'
-    }));
+    const myGroups = await CloudService.getAllUserGroups(currentUser.id);
+    setGroups(myGroups);
+    setActiveGroupId(group.id);
+    setCurrentView('chat');
     setModals(m => ({ ...m, join: false, error: null }));
   };
 
-  const handleSendMessage = (text: string) => {
-    if (!state.currentUser || !state.activeGroupId) return;
-
-    const newMessage: Message = {
-      id: generateId(),
-      groupId: state.activeGroupId,
-      senderId: state.currentUser.id,
-      senderName: state.currentUser.username,
-      text,
-      timestamp: Date.now()
-    };
-
-    setState(prev => ({
-      ...prev,
-      messages: [...prev.messages, newMessage]
-    }));
+  const handleSendMessage = async (text: string) => {
+    if (!currentUser || !activeGroupId) return;
+    const msg = await CloudService.sendMessage(activeGroupId, currentUser, text);
+    setMessages(prev => [...prev, msg]);
   };
 
-  const handleNavigate = (view: ViewType) => {
-    setState(prev => ({ ...prev, currentView: view }));
+  const handleDeleteGroup = async (groupId: string) => {
+    if (!currentUser) return;
+    const success = await CloudService.deleteGroup(groupId, currentUser.id);
+    if (success) {
+      setGroups(prev => prev.filter(g => g.id !== groupId));
+      setActiveGroupId(null);
+      setCurrentView('dashboard');
+    }
   };
 
-  const handleSelectGroup = (id: string) => {
-    setState(prev => ({ ...prev, activeGroupId: id, currentView: 'chat' }));
+  const handleUpdateProfile = (newUsername: string) => {
+    if (!currentUser) return;
+    const updatedUser = { ...currentUser, username: newUsername };
+    const users = getStoredUsers().map(u => u.id === updatedUser.id ? updatedUser : u);
+    setStoredUsers(users);
+    setAuthUser(updatedUser);
+    setCurrentUser(updatedUser);
   };
 
-  if (!state.currentUser) {
+  if (!currentUser) {
     return <AuthPage onAuth={handleAuth} />;
   }
 
-  const activeGroup = state.groups.find(g => g.id === state.activeGroupId) || null;
-  const filteredMessages = state.messages.filter(m => m.groupId === state.activeGroupId);
-  const userGroups = state.groups.filter(g => g.members.includes(state.currentUser!.id));
+  const activeGroup = groups.find(g => g.id === activeGroupId) || null;
 
   return (
     <div className="h-screen flex bg-purple-50">
       <Sidebar 
-        groups={userGroups}
-        activeGroupId={state.activeGroupId}
-        currentUser={state.currentUser}
-        currentView={state.currentView}
-        onSelectGroup={handleSelectGroup}
-        onNavigate={handleNavigate}
+        groups={groups}
+        activeGroupId={activeGroupId}
+        currentUser={currentUser}
+        currentView={currentView}
+        onSelectGroup={(id) => { setActiveGroupId(id); setCurrentView('chat'); }}
+        onNavigate={setCurrentView}
         onCreateGroup={() => setModals(m => ({ ...m, create: true }))}
         onJoinGroup={() => setModals(m => ({ ...m, join: true, error: null }))}
         onLogout={handleLogout}
       />
 
       <main className="flex-1 flex overflow-hidden">
-        {state.currentView === 'dashboard' && (
+        {currentView === 'dashboard' && (
           <Dashboard 
-            currentUser={state.currentUser}
-            groups={userGroups}
+            currentUser={currentUser}
+            groups={groups}
             onCreateGroup={() => setModals(m => ({ ...m, create: true }))}
             onJoinGroup={() => setModals(m => ({ ...m, join: true, error: null }))}
-            onSelectGroup={handleSelectGroup}
-            onNavigate={handleNavigate}
+            onSelectGroup={(id) => { setActiveGroupId(id); setCurrentView('chat'); }}
+            onNavigate={setCurrentView}
           />
         )}
         
-        {state.currentView === 'profile' && (
+        {currentView === 'profile' && (
           <ProfileView 
-            currentUser={state.currentUser}
+            currentUser={currentUser}
             onUpdateProfile={handleUpdateProfile}
           />
         )}
 
-        {state.currentView === 'chat' && (
+        {currentView === 'chat' && (
           <ChatArea 
             group={activeGroup}
-            messages={filteredMessages}
-            currentUser={state.currentUser}
+            messages={messages}
+            currentUser={currentUser}
             onSendMessage={handleSendMessage}
             onInvite={() => setModals(m => ({ ...m, invite: true }))}
             onDeleteGroup={handleDeleteGroup}
@@ -234,26 +215,9 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Modals */}
-      {modals.create && (
-        <CreateGroupModal 
-          onClose={() => setModals(m => ({ ...m, create: false }))}
-          onCreate={handleCreateGroup}
-        />
-      )}
-      {modals.join && (
-        <JoinGroupModal 
-          onClose={() => setModals(m => ({ ...m, join: false }))}
-          onJoin={handleJoinGroup}
-          error={modals.error || undefined}
-        />
-      )}
-      {modals.invite && activeGroup && (
-        <InviteModal 
-          group={activeGroup}
-          onClose={() => setModals(m => ({ ...m, invite: false }))}
-        />
-      )}
+      {modals.create && <CreateGroupModal onClose={() => setModals(m => ({ ...m, create: false }))} onCreate={handleCreateGroup} />}
+      {modals.join && <JoinGroupModal onClose={() => setModals(m => ({ ...m, join: false }))} onJoin={handleJoinGroup} error={modals.error || undefined} />}
+      {modals.invite && activeGroup && <InviteModal group={activeGroup} onClose={() => setModals(m => ({ ...m, invite: false }))} />}
     </div>
   );
 };

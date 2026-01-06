@@ -28,11 +28,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [showSettings, setShowSettings] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Sort messages to ensure real-time order
+  const sortedMessages = [...messages].sort((a, b) => a.timestamp - b.timestamp);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [sortedMessages]);
 
   useEffect(() => {
     if (group) {
@@ -51,7 +54,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   const handleSummarize = async () => {
     setIsSummarizing(true);
-    const result = await summarizeChat(messages);
+    const result = await summarizeChat(sortedMessages);
     setSummary(result);
     setIsSummarizing(false);
   };
@@ -67,7 +70,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       <div className="flex-1 bg-white flex flex-col items-center justify-center p-8 text-center">
         <div className="w-24 h-24 bg-purple-50 rounded-full flex items-center justify-center mb-6 animate-bounce duration-1000">
           <svg className="w-12 h-12 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z" />
           </svg>
         </div>
         <h2 className="text-3xl font-black text-slate-900 mb-2 tracking-tight">Connect with your Fam</h2>
@@ -98,7 +101,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
           </div>
         </div>
         <div className="flex gap-2 items-center">
-          <Button variant="secondary" size="sm" className="hidden sm:flex" onClick={handleSummarize} disabled={isSummarizing || messages.length === 0}>
+          <Button variant="secondary" size="sm" className="hidden sm:flex" onClick={handleSummarize} disabled={isSummarizing || sortedMessages.length === 0}>
             {isSummarizing ? "Thinking..." : "✨ AI Recap"}
           </Button>
           <Button variant="primary" size="sm" onClick={onInvite}>Invite</Button>
@@ -118,10 +121,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         <div className="absolute top-20 right-8 w-64 bg-white border border-purple-100 shadow-2xl rounded-2xl z-30 p-4 animate-in fade-in slide-in-from-top-4 duration-200">
           <h4 className="text-xs font-black text-slate-400 uppercase mb-4 tracking-widest">Admin Controls</h4>
           <div className="space-y-2">
-            <button className="w-full text-left p-3 hover:bg-slate-50 rounded-xl text-sm font-semibold text-slate-700 flex items-center gap-3">
-              <svg className="w-4 h-4 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-              Edit Group Info
-            </button>
             <button 
               onClick={() => onDeleteGroup && onDeleteGroup(group.id)}
               className="w-full text-left p-3 hover:bg-red-50 rounded-xl text-sm font-semibold text-red-600 flex items-center gap-3"
@@ -156,13 +155,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         ref={scrollRef}
         className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-8 bg-slate-50/30"
       >
-        {messages.length === 0 ? (
+        {sortedMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-400">
             <div className="max-w-sm text-center p-10 bg-white rounded-[2.5rem] border border-purple-50 shadow-xl shadow-purple-100/20">
               <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <svg className="w-8 h-8 text-purple-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
               </div>
-              <p className="text-slate-500 font-semibold mb-6">Silence is gold, but connection is better. Be the first to speak!</p>
+              <p className="text-slate-500 font-semibold mb-6">Stranger or friend, be the first to speak!</p>
               {icebreaker ? (
                 <div className="bg-purple-600 p-4 rounded-2xl text-white text-sm shadow-lg shadow-purple-200 italic font-medium mb-4 relative">
                   <div className="absolute -top-2 left-4 bg-purple-900 text-[8px] font-black px-2 py-0.5 rounded uppercase tracking-widest">Gemini Suggests</div>
@@ -176,9 +175,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             </div>
           </div>
         ) : (
-          messages.map((msg, i) => {
+          sortedMessages.map((msg, i) => {
             const isMe = msg.senderId === currentUser.id;
-            const nextMsg = messages[i + 1];
+            const nextMsg = sortedMessages[i + 1];
             const isLastOfBlock = !nextMsg || nextMsg.senderId !== msg.senderId;
 
             return (
@@ -224,11 +223,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                 placeholder={`Send a message to ${group.name}...`}
                 className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:ring-4 focus:ring-purple-500/10 focus:border-purple-300 focus:bg-white transition-all font-medium"
               />
-              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                 <button className="p-2 text-slate-300 hover:text-purple-500 transition-colors">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                 </button>
-              </div>
             </div>
             <button 
                onClick={handleSend} 
