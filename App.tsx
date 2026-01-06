@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { User, Group, Message, AppState } from './types';
+import React, { useState, useEffect } from 'react';
+import { User, Group, Message, AppState, ViewType } from './types';
 import { 
   getStoredUsers, 
   setStoredUsers, 
@@ -16,6 +16,8 @@ import {
 import { AuthPage } from './components/AuthPage';
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
+import { Dashboard } from './components/Dashboard';
+import { ProfileView } from './components/ProfileView';
 import { CreateGroupModal, JoinGroupModal, InviteModal } from './components/Modals';
 
 const App: React.FC = () => {
@@ -23,7 +25,8 @@ const App: React.FC = () => {
     currentUser: getCurrentUser(),
     groups: getStoredGroups(),
     messages: getStoredMessages(),
-    activeGroupId: null
+    activeGroupId: null,
+    currentView: 'dashboard'
   });
 
   const [modals, setModals] = useState<{
@@ -67,11 +70,21 @@ const App: React.FC = () => {
       return;
     }
 
-    setState(prev => ({ ...prev, currentUser: user }));
+    setState(prev => ({ ...prev, currentUser: user, currentView: 'dashboard' }));
+  };
+
+  const handleUpdateProfile = (newUsername: string) => {
+    if (!state.currentUser) return;
+    
+    const updatedUser = { ...state.currentUser, username: newUsername };
+    const users = getStoredUsers().map(u => u.id === updatedUser.id ? updatedUser : u);
+    setStoredUsers(users);
+    
+    setState(prev => ({ ...prev, currentUser: updatedUser }));
   };
 
   const handleLogout = () => {
-    setState(prev => ({ ...prev, currentUser: null, activeGroupId: null }));
+    setState(prev => ({ ...prev, currentUser: null, activeGroupId: null, currentView: 'dashboard' }));
   };
 
   const handleCreateGroup = (name: string, description: string) => {
@@ -90,9 +103,26 @@ const App: React.FC = () => {
     setState(prev => ({
       ...prev,
       groups: [...prev.groups, newGroup],
-      activeGroupId: newGroup.id
+      activeGroupId: newGroup.id,
+      currentView: 'chat'
     }));
     setModals(m => ({ ...m, create: false }));
+  };
+
+  const handleDeleteGroup = (groupId: string) => {
+    if (!state.currentUser) return;
+    const group = state.groups.find(g => g.id === groupId);
+    if (!group || group.adminId !== state.currentUser.id) return;
+
+    if (!confirm(`Are you sure you want to dissolve "${group.name}"? All messages will be lost.`)) return;
+
+    setState(prev => ({
+      ...prev,
+      groups: prev.groups.filter(g => g.id !== groupId),
+      messages: prev.messages.filter(m => m.groupId !== groupId),
+      activeGroupId: null,
+      currentView: 'dashboard'
+    }));
   };
 
   const handleJoinGroup = (code: string) => {
@@ -119,7 +149,8 @@ const App: React.FC = () => {
     setState(prev => ({
       ...prev,
       groups: updatedGroups,
-      activeGroupId: group.id
+      activeGroupId: group.id,
+      currentView: 'chat'
     }));
     setModals(m => ({ ...m, join: false, error: null }));
   };
@@ -142,6 +173,14 @@ const App: React.FC = () => {
     }));
   };
 
+  const handleNavigate = (view: ViewType) => {
+    setState(prev => ({ ...prev, currentView: view }));
+  };
+
+  const handleSelectGroup = (id: string) => {
+    setState(prev => ({ ...prev, activeGroupId: id, currentView: 'chat' }));
+  };
+
   if (!state.currentUser) {
     return <AuthPage onAuth={handleAuth} />;
   }
@@ -156,19 +195,44 @@ const App: React.FC = () => {
         groups={userGroups}
         activeGroupId={state.activeGroupId}
         currentUser={state.currentUser}
-        onSelectGroup={(id) => setState(p => ({ ...p, activeGroupId: id }))}
+        currentView={state.currentView}
+        onSelectGroup={handleSelectGroup}
+        onNavigate={handleNavigate}
         onCreateGroup={() => setModals(m => ({ ...m, create: true }))}
         onJoinGroup={() => setModals(m => ({ ...m, join: true, error: null }))}
         onLogout={handleLogout}
       />
 
-      <ChatArea 
-        group={activeGroup}
-        messages={filteredMessages}
-        currentUser={state.currentUser}
-        onSendMessage={handleSendMessage}
-        onInvite={() => setModals(m => ({ ...m, invite: true }))}
-      />
+      <main className="flex-1 flex overflow-hidden">
+        {state.currentView === 'dashboard' && (
+          <Dashboard 
+            currentUser={state.currentUser}
+            groups={userGroups}
+            onCreateGroup={() => setModals(m => ({ ...m, create: true }))}
+            onJoinGroup={() => setModals(m => ({ ...m, join: true, error: null }))}
+            onSelectGroup={handleSelectGroup}
+            onNavigate={handleNavigate}
+          />
+        )}
+        
+        {state.currentView === 'profile' && (
+          <ProfileView 
+            currentUser={state.currentUser}
+            onUpdateProfile={handleUpdateProfile}
+          />
+        )}
+
+        {state.currentView === 'chat' && (
+          <ChatArea 
+            group={activeGroup}
+            messages={filteredMessages}
+            currentUser={state.currentUser}
+            onSendMessage={handleSendMessage}
+            onInvite={() => setModals(m => ({ ...m, invite: true }))}
+            onDeleteGroup={handleDeleteGroup}
+          />
+        )}
+      </main>
 
       {/* Modals */}
       {modals.create && (

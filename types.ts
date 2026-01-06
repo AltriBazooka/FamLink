@@ -25,9 +25,12 @@ export interface Message {
   timestamp: number;
 }
 
+export type ViewType = 'chat' | 'dashboard' | 'profile';
+
 export interface AppState {
   currentUser: User | null;
   groups: Group[];
   messages: Message[];
   activeGroupId: string | null;
+  currentView: ViewType;
 }
