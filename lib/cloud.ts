@@ -3,11 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import { User, Group, Message } from '../types.ts';
 import { generateInviteCode } from './storage.ts';
 
-// These should be your actual project details from Supabase Settings -> API
-// Since I don't have your specific keys, I'm using placeholders you should replace
-// if you have them, otherwise the code structure is ready.
-const SUPABASE_URL = 'https://your-project-url.supabase.co'; 
-const SUPABASE_KEY = 'your-anon-key';
+// User provided Supabase project details
+const SUPABASE_URL = 'https://ybzyygrhjfwxddcqhmrv.supabase.co'; 
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlienl5Z3JoamZ3eGRkY3FobXJ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3MzE2MjEsImV4cCI6MjA4MzMwNzYyMX0.Y9PHoN3jDlstP0myD6SLJcivngspNNaNAQw-oNXf9-M';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -15,10 +13,15 @@ export const CloudService = {
   subscribe: (callback: (event: any) => void) => {
     const channel = supabase
       .channel('famlink-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+        console.log('Realtime change received:', payload);
         callback({ type: 'GLOBAL_SYNC' });
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Successfully subscribed to realtime changes');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -26,21 +29,31 @@ export const CloudService = {
   },
 
   findUser: async (username: string): Promise<User | null> => {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('username', username)
-      .maybeSingle();
-    
-    if (error || !data) return null;
-    return {
-      id: data.id,
-      username: data.username,
-      password: data.password,
-      avatar: data.avatar,
-      role: data.role,
-      createdAt: Date.parse(data.created_at)
-    };
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', username)
+        .maybeSingle();
+      
+      if (error) {
+        console.error("Supabase findUser error:", error.message);
+        throw error;
+      }
+      if (!data) return null;
+
+      return {
+        id: data.id,
+        username: data.username,
+        password: data.password,
+        avatar: data.avatar,
+        role: data.role as 'user' | 'dev',
+        createdAt: Date.parse(data.created_at)
+      };
+    } catch (e) {
+      console.error("Failed to fetch user from Supabase:", e);
+      throw e;
+    }
   },
 
   registerUser: async (user: User): Promise<void> => {
@@ -53,7 +66,10 @@ export const CloudService = {
         avatar: user.avatar,
         role: user.role
       }]);
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase registration error:", error.message);
+      throw error;
+    }
   },
 
   getAllUsers: async (): Promise<User[]> => {
@@ -65,7 +81,7 @@ export const CloudService = {
       id: u.id,
       username: u.username,
       avatar: u.avatar,
-      role: u.role,
+      role: u.role as 'user' | 'dev',
       createdAt: Date.parse(u.created_at)
     }));
   },
@@ -90,10 +106,12 @@ export const CloudService = {
 
     if (groupError) throw groupError;
 
-    await supabase.from('group_members').insert([{
+    const { error: memberError } = await supabase.from('group_members').insert([{
       group_id: groupId,
       user_id: adminId
     }]);
+
+    if (memberError) throw memberError;
 
     return {
       id: groupId,
@@ -115,7 +133,6 @@ export const CloudService = {
 
     if (error || !group) return null;
 
-    // Join junction table
     const { error: joinError } = await supabase
       .from('group_members')
       .upsert([{ group_id: group.id, user_id: userId }], { onConflict: 'group_id,user_id' });
