@@ -26,6 +26,7 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [isLoading, setIsLoading] = useState(false);
 
   const [modals, setModals] = useState<{
     create: boolean;
@@ -36,13 +37,17 @@ const App: React.FC = () => {
 
   const syncState = useCallback(async () => {
     if (!currentUser) return;
-    const userGroups = await CloudService.getAllUserGroups(currentUser.id);
-    setGroups(userGroups);
-    if (activeGroupId) {
-      const groupMsgs = await CloudService.getGroupMessages(activeGroupId);
-      setMessages(groupMsgs);
+    try {
+      const userGroups = await CloudService.getAllUserGroups(currentUser.id);
+      setGroups(userGroups);
+      if (activeGroupId && currentView === 'chat') {
+        const groupMsgs = await CloudService.getGroupMessages(activeGroupId);
+        setMessages(groupMsgs);
+      }
+    } catch (err) {
+      console.error("Sync failed:", err);
     }
-  }, [currentUser, activeGroupId]);
+  }, [currentUser, activeGroupId, currentView]);
 
   useEffect(() => {
     if (currentUser) {
@@ -53,56 +58,62 @@ const App: React.FC = () => {
   }, [currentUser, syncState]);
 
   const handleAuth = async (username: string, password: string, isSignup: boolean) => {
-    // Force a fresh ledger fetch before doing anything
-    const user = await CloudService.findUser(username);
-    
-    if (username === DEV_CREDENTIALS.username && password === DEV_CREDENTIALS.password) {
-      let devUser = user;
-      if (!devUser) {
-        devUser = {
-          id: 'dev-master',
+    setIsLoading(true);
+    try {
+      const user = await CloudService.findUser(username);
+      
+      if (username === DEV_CREDENTIALS.username && password === DEV_CREDENTIALS.password) {
+        let devUser = user;
+        if (!devUser) {
+          devUser = {
+            id: generateId(),
+            username,
+            password,
+            role: 'dev',
+            avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`,
+            createdAt: Date.now()
+          };
+          await CloudService.registerUser(devUser);
+        }
+        setAuthUser(devUser);
+        setCurrentUser(devUser);
+        return;
+      }
+
+      if (isSignup) {
+        if (user) {
+          alert("This username is already taken. Choose another.");
+          return;
+        }
+        const newUser: User = {
+          id: generateId(),
           username,
           password,
-          role: 'dev',
-          avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AltriDev',
+          role: 'user',
+          avatar: `https://picsum.photos/seed/${username}/200`,
           createdAt: Date.now()
         };
-        await CloudService.registerUser(devUser);
+        await CloudService.registerUser(newUser);
+        setAuthUser(newUser);
+        setCurrentUser(newUser);
+      } else {
+        if (!user) {
+          alert("No account found with that username.");
+          return;
+        }
+        if (user.password !== password) {
+          alert("Incorrect password.");
+          return;
+        }
+        setAuthUser(user);
+        setCurrentUser(user);
       }
-      setAuthUser(devUser);
-      setCurrentUser(devUser);
-      return;
+      setCurrentView('dashboard');
+    } catch (err) {
+      alert("Auth failed. Check database connection.");
+    } finally {
+      setIsLoading(false);
     }
-
-    if (isSignup) {
-      if (user) {
-        alert("This username is already taken on the global FamLink network.");
-        return;
-      }
-      const newUser: User = {
-        id: generateId(),
-        username,
-        password,
-        role: 'user',
-        avatar: `https://picsum.photos/seed/${username}/200`,
-        createdAt: Date.now()
-      };
-      await CloudService.registerUser(newUser);
-      setAuthUser(newUser);
-      setCurrentUser(newUser);
-    } else {
-      if (!user) {
-        alert("Account not found. Ensure you typed the name correctly or sign up.");
-        return;
-      }
-      if (user.password !== password) {
-        alert("Incorrect password.");
-        return;
-      }
-      setAuthUser(user);
-      setCurrentUser(user);
-    }
-    setCurrentView('dashboard');
   };
 
   const handleLogout = () => {
@@ -113,38 +124,52 @@ const App: React.FC = () => {
 
   const handleCreateGroup = async (name: string, description: string) => {
     if (!currentUser) return;
-    const newGroup = await CloudService.createGroup(name, description, currentUser.id);
-    await syncState();
-    setActiveGroupId(newGroup.id);
-    setCurrentView('chat');
-    setModals(m => ({ ...m, create: false }));
+    try {
+      const newGroup = await CloudService.createGroup(name, description, currentUser.id);
+      await syncState();
+      setActiveGroupId(newGroup.id);
+      setCurrentView('chat');
+      setModals(m => ({ ...m, create: false }));
+    } catch (err) {
+      alert("Failed to create group.");
+    }
   };
 
   const handleJoinGroup = async (code: string) => {
     if (!currentUser) return;
-    const group = await CloudService.joinGroupByCode(code, currentUser.id);
-    if (!group) {
-      setModals(m => ({ ...m, error: "Invite code not found." }));
-      return;
+    try {
+      const group = await CloudService.joinGroupByCode(code, currentUser.id);
+      if (!group) {
+        setModals(m => ({ ...m, error: "Invalid invite code. Try again." }));
+        return;
+      }
+      await syncState();
+      setActiveGroupId(group.id);
+      setCurrentView('chat');
+      setModals(m => ({ ...m, join: false, error: null }));
+    } catch (err) {
+      alert("Failed to join group.");
     }
-    await syncState();
-    setActiveGroupId(group.id);
-    setCurrentView('chat');
-    setModals(m => ({ ...m, join: false, error: null }));
   };
 
   const handleSendMessage = async (text: string) => {
     if (!currentUser || !activeGroupId) return;
-    const msg = await CloudService.sendMessage(activeGroupId, currentUser, text);
-    setMessages(prev => [...prev, msg]);
+    try {
+      await CloudService.sendMessage(activeGroupId, currentUser, text);
+      // Real-time subscription will update the UI automatically
+    } catch (err) {
+      console.error("Message send failed:", err);
+    }
   };
 
   const handleDeleteGroup = async (groupId: string) => {
     if (!currentUser) return;
-    await CloudService.deleteGroup(groupId, currentUser.id);
-    await syncState();
-    setActiveGroupId(null);
-    setCurrentView('dashboard');
+    if (confirm("Are you sure you want to delete this group? All messages will be lost.")) {
+      await CloudService.deleteGroup(groupId, currentUser.id);
+      await syncState();
+      setActiveGroupId(null);
+      setCurrentView('dashboard');
+    }
   };
 
   if (!currentUser) return <AuthPage onAuth={handleAuth} />;
