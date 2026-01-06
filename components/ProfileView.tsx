@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { User } from '../types';
-import { Button } from './Button';
+import { User } from '../types.ts';
+import { Button } from './Button.tsx';
 
 interface ProfileViewProps {
   currentUser: User;

@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { User, Group, ViewType } from '../types';
-import { Button } from './Button';
+import { User, Group, ViewType } from '../types.ts';
+import { Button } from './Button.tsx';
 
 interface DashboardProps {
   currentUser: User;

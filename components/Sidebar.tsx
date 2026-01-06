@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { Group, User, ViewType } from '../types';
-import { Button } from './Button';
+import { Group, User, ViewType } from '../types.ts';
+import { Button } from './Button.tsx';
 
 interface SidebarProps {
   groups: Group[];

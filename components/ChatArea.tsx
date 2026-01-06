@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Group, Message, User } from '../types';
-import { Button } from './Button';
-import { summarizeChat, getConversationStarter } from '../services/geminiService';
+import { Group, Message, User } from '../types.ts';
+import { Button } from './Button.tsx';
+import { summarizeChat, getConversationStarter } from '../services/geminiService.ts';
 
 interface ChatAreaProps {
   group: Group | null;
