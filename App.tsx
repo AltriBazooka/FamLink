@@ -183,10 +183,11 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = async (newUsername: string) => {
     if (!currentUser) return;
-    const allUsers = CloudService.getAllUsers();
+    // Fix: await CloudService.getAllUsers() before mapping
+    const allUsers = await CloudService.getAllUsers();
     const updatedUser = { ...currentUser, username: newUsername };
     const newUsers = allUsers.map(u => u.id === updatedUser.id ? updatedUser : u);
-    CloudService.updateUsers(newUsers);
+    await CloudService.updateUsers(newUsers);
     setAuthUser(updatedUser);
     setCurrentUser(updatedUser);
   };
