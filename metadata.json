@@ -1,0 +1,8 @@
+{
+  "name": "FamLink",
+  "description": "A secure, purple-themed communication platform where users can create private group chats, manage their own digital space, and connect with others via unique invite codes.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
