@@ -44,52 +44,22 @@ const App: React.FC = () => {
     }
   }, [currentUser, activeGroupId]);
 
-  // Initial Sync
   useEffect(() => {
-    syncState();
-  }, [syncState]);
-
-  // SUBSCRIBE TO REAL-TIME & POLL UPDATES
-  useEffect(() => {
-    const unsubscribe = CloudService.subscribe((event) => {
-      switch (event.type) {
-        case 'MESSAGE':
-          const msg = event.payload as Message;
-          if (msg.groupId === activeGroupId) {
-            setMessages(prev => {
-              if (prev.find(m => m.id === msg.id)) return prev;
-              return [...prev, msg].sort((a, b) => a.timestamp - b.timestamp);
-            });
-          }
-          break;
-        case 'GLOBAL_SYNC':
-        case 'USER_JOINED':
-        case 'GROUP_UPDATE':
-          syncState();
-          break;
-        case 'GROUP_DELETED':
-          const deletedId = event.payload as string;
-          setGroups(prev => prev.filter(g => g.id !== deletedId));
-          if (activeGroupId === deletedId) {
-            setActiveGroupId(null);
-            setCurrentView('dashboard');
-            alert("Group dissolved.");
-          }
-          break;
-      }
-    });
-
-    return unsubscribe;
-  }, [activeGroupId, currentUser, syncState]);
+    if (currentUser) {
+       syncState();
+       const unsubscribe = CloudService.subscribe(() => syncState());
+       return unsubscribe;
+    }
+  }, [currentUser, syncState]);
 
   const handleAuth = async (username: string, password: string, isSignup: boolean) => {
-    // 1. Check Global Discovery Service for User
-    let user = await CloudService.findUser(username);
+    // Force a fresh ledger fetch before doing anything
+    const user = await CloudService.findUser(username);
     
-    // Dev login check
     if (username === DEV_CREDENTIALS.username && password === DEV_CREDENTIALS.password) {
-      if (!user) {
-        user = {
+      let devUser = user;
+      if (!devUser) {
+        devUser = {
           id: 'dev-master',
           username,
           password,
@@ -97,20 +67,19 @@ const App: React.FC = () => {
           avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AltriDev',
           createdAt: Date.now()
         };
-        await CloudService.registerUser(user);
+        await CloudService.registerUser(devUser);
       }
-      setAuthUser(user);
-      setCurrentUser(user);
-      setCurrentView('dashboard');
+      setAuthUser(devUser);
+      setCurrentUser(devUser);
       return;
     }
 
     if (isSignup) {
       if (user) {
-        alert("Username already exists on the FamLink network!");
+        alert("This username is already taken on the global FamLink network.");
         return;
       }
-      user = {
+      const newUser: User = {
         id: generateId(),
         username,
         password,
@@ -118,20 +87,21 @@ const App: React.FC = () => {
         avatar: `https://picsum.photos/seed/${username}/200`,
         createdAt: Date.now()
       };
-      await CloudService.registerUser(user);
+      await CloudService.registerUser(newUser);
+      setAuthUser(newUser);
+      setCurrentUser(newUser);
     } else {
       if (!user) {
-        alert("Account not found. Please sign up or check the network connection.");
+        alert("Account not found. Ensure you typed the name correctly or sign up.");
         return;
       }
       if (user.password !== password) {
         alert("Incorrect password.");
         return;
       }
+      setAuthUser(user);
+      setCurrentUser(user);
     }
-
-    setAuthUser(user);
-    setCurrentUser(user);
     setCurrentView('dashboard');
   };
 
@@ -144,7 +114,7 @@ const App: React.FC = () => {
   const handleCreateGroup = async (name: string, description: string) => {
     if (!currentUser) return;
     const newGroup = await CloudService.createGroup(name, description, currentUser.id);
-    setGroups(prev => [...prev, newGroup]);
+    await syncState();
     setActiveGroupId(newGroup.id);
     setCurrentView('chat');
     setModals(m => ({ ...m, create: false }));
@@ -153,12 +123,10 @@ const App: React.FC = () => {
   const handleJoinGroup = async (code: string) => {
     if (!currentUser) return;
     const group = await CloudService.joinGroupByCode(code, currentUser.id);
-    
     if (!group) {
-      setModals(m => ({ ...m, error: "Invite code not found in Global Discovery" }));
+      setModals(m => ({ ...m, error: "Invite code not found." }));
       return;
     }
-
     await syncState();
     setActiveGroupId(group.id);
     setCurrentView('chat');
@@ -168,37 +136,21 @@ const App: React.FC = () => {
   const handleSendMessage = async (text: string) => {
     if (!currentUser || !activeGroupId) return;
     const msg = await CloudService.sendMessage(activeGroupId, currentUser, text);
-    setMessages(prev => [...prev, msg].sort((a, b) => a.timestamp - b.timestamp));
+    setMessages(prev => [...prev, msg]);
   };
 
   const handleDeleteGroup = async (groupId: string) => {
     if (!currentUser) return;
-    const success = await CloudService.deleteGroup(groupId, currentUser.id);
-    if (success) {
-      setGroups(prev => prev.filter(g => g.id !== groupId));
-      setActiveGroupId(null);
-      setCurrentView('dashboard');
-    }
+    await CloudService.deleteGroup(groupId, currentUser.id);
+    await syncState();
+    setActiveGroupId(null);
+    setCurrentView('dashboard');
   };
 
-  const handleUpdateProfile = async (newUsername: string) => {
-    if (!currentUser) return;
-    const allUsers = await CloudService.getAllUsers();
-    const updatedUser = { ...currentUser, username: newUsername };
-    const newUsers = allUsers.map(u => u.id === updatedUser.id ? updatedUser : u);
-    await CloudService.updateUsers(newUsers);
-    setAuthUser(updatedUser);
-    setCurrentUser(updatedUser);
-  };
-
-  if (!currentUser) {
-    return <AuthPage onAuth={handleAuth} />;
-  }
-
-  const activeGroup = groups.find(g => g.id === activeGroupId) || null;
+  if (!currentUser) return <AuthPage onAuth={handleAuth} />;
 
   return (
-    <div className="h-screen flex bg-purple-50">
+    <div className="h-screen flex bg-purple-50 overflow-hidden">
       <Sidebar 
         groups={groups}
         activeGroupId={activeGroupId}
@@ -222,17 +174,17 @@ const App: React.FC = () => {
             onNavigate={setCurrentView}
           />
         )}
-        
         {currentView === 'profile' && (
-          <ProfileView 
-            currentUser={currentUser}
-            onUpdateProfile={handleUpdateProfile}
-          />
+          <ProfileView currentUser={currentUser} onUpdateProfile={async (name) => {
+             const all = await CloudService.getAllUsers();
+             const updated = all.map(u => u.id === currentUser.id ? {...u, username: name} : u);
+             await CloudService.updateUsers(updated);
+             setAuthUser({...currentUser, username: name});
+          }} />
         )}
-
         {currentView === 'chat' && (
           <ChatArea 
-            group={activeGroup}
+            group={groups.find(g => g.id === activeGroupId) || null}
             messages={messages}
             currentUser={currentUser}
             onSendMessage={handleSendMessage}
@@ -240,17 +192,19 @@ const App: React.FC = () => {
             onDeleteGroup={handleDeleteGroup}
           />
         )}
-
         {currentView === 'admin-panel' && currentUser.role === 'dev' && (
-          <DevAdminPanel 
-            onLogout={handleLogout}
-          />
+          <DevAdminPanel onLogout={handleLogout} />
         )}
       </main>
 
       {modals.create && <CreateGroupModal onClose={() => setModals(m => ({ ...m, create: false }))} onCreate={handleCreateGroup} />}
       {modals.join && <JoinGroupModal onClose={() => setModals(m => ({ ...m, join: false }))} onJoin={handleJoinGroup} error={modals.error || undefined} />}
-      {modals.invite && activeGroup && <InviteModal group={activeGroup} onClose={() => setModals(m => ({ ...m, invite: false }))} />}
+      {modals.invite && activeGroupId && (
+        <InviteModal 
+          group={groups.find(g => g.id === activeGroupId)!} 
+          onClose={() => setModals(m => ({ ...m, invite: false }))} 
+        />
+      )}
     </div>
   );
 };
