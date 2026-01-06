@@ -83,7 +83,7 @@ const App: React.FC = () => {
   }, [activeGroupId, currentUser, syncState]);
 
   const handleAuth = async (username: string, password: string, isSignup: boolean) => {
-    // 1. Check Global Cloud for User
+    // 1. Check Global Discovery Service for User
     let user = await CloudService.findUser(username);
     
     // Dev login check
@@ -107,7 +107,7 @@ const App: React.FC = () => {
 
     if (isSignup) {
       if (user) {
-        alert("Username already taken globally!");
+        alert("Username already exists on the FamLink network!");
         return;
       }
       user = {
@@ -121,11 +121,11 @@ const App: React.FC = () => {
       await CloudService.registerUser(user);
     } else {
       if (!user) {
-        alert("User not found on the network!");
+        alert("Account not found. Please sign up or check the network connection.");
         return;
       }
       if (user.password !== password) {
-        alert("Invalid password!");
+        alert("Incorrect password.");
         return;
       }
     }
@@ -155,7 +155,7 @@ const App: React.FC = () => {
     const group = await CloudService.joinGroupByCode(code, currentUser.id);
     
     if (!group) {
-      setModals(m => ({ ...m, error: "Invalid invite code" }));
+      setModals(m => ({ ...m, error: "Invite code not found in Global Discovery" }));
       return;
     }
 
@@ -183,10 +183,10 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = async (newUsername: string) => {
     if (!currentUser) return;
-    const allUsers = CloudService.getAllUsers();
+    const allUsers = await CloudService.getAllUsers();
     const updatedUser = { ...currentUser, username: newUsername };
     const newUsers = allUsers.map(u => u.id === updatedUser.id ? updatedUser : u);
-    CloudService.updateUsers(newUsers);
+    await CloudService.updateUsers(newUsers);
     setAuthUser(updatedUser);
     setCurrentUser(updatedUser);
   };

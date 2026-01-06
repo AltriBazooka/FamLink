@@ -13,8 +13,13 @@ export const DevAdminPanel: React.FC<DevAdminPanelProps> = ({ onLogout }) => {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState('');
 
+  // Fixed async call to CloudService.getAllUsers() inside useEffect
   useEffect(() => {
-    setUsers(CloudService.getAllUsers());
+    const fetchUsers = async () => {
+      const allUsers = await CloudService.getAllUsers();
+      setUsers(allUsers);
+    };
+    fetchUsers();
   }, []);
 
   const handleDeleteUser = (userId: string) => {

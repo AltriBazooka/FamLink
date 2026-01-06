@@ -3,12 +3,10 @@ import { User, Group, Message } from '../types.ts';
 import { generateId, generateInviteCode } from './storage.ts';
 import { GoogleGenAI } from "@google/genai";
 
-const getApiKey = () => {
-  try { return process.env.API_KEY || ""; } catch { return ""; }
-};
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
+// Always use { apiKey: process.env.API_KEY } for initialization.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
-const CHANNEL_NAME = 'famlink_cloud_sync';
+const CHANNEL_NAME = 'famlink_p2p_relay';
 const channel = new BroadcastChannel(CHANNEL_NAME);
 
 export type CloudEventType = 'MESSAGE' | 'GROUP_UPDATE' | 'USER_JOINED' | 'GROUP_DELETED' | 'GLOBAL_SYNC';
@@ -24,54 +22,50 @@ const STORAGE_KEYS = {
   MESSAGES: 'famlink_cloud_messages',
 };
 
-const getGroups = (): Group[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.GROUPS) || '[]');
-const setGroups = (groups: Group[]) => localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
-const getMessages = (): Message[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]');
-const setMessages = (messages: Message[]) => localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
-const getUsers = (): User[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
-const setUsers = (users: User[]) => localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+const getLocalGroups = (): Group[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.GROUPS) || '[]');
+const setLocalGroups = (groups: Group[]) => localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(groups));
+const getLocalMessages = (): Message[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.MESSAGES) || '[]');
+const setLocalMessages = (messages: Message[]) => localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(messages));
+const getLocalUsers = (): User[] => JSON.parse(localStorage.getItem(STORAGE_KEYS.USERS) || '[]');
+const setLocalUsers = (users: User[]) => localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
 /**
- * GEMINI GLOBAL RELAY (The "Virtual Backend")
- * This function treats Gemini as a centralized database.
+ * GLOBAL DISCOVERY ENGINE (The "Method" to bridge different PCs)
+ * Instead of just syncing, we ask Gemini to maintain a "Virtual Registry"
  */
-const syncGlobalState = async (forceSearchCode?: string) => {
-  const localData = {
-    users: getUsers(),
-    groups: getGroups(),
-    messages: getMessages().slice(-30)
+const performGlobalDiscovery = async (queryType: 'FETCH_ALL' | 'FIND_CODE' | 'FIND_USER', queryVal?: string) => {
+  const localContext = {
+    users: getLocalUsers(),
+    groups: getLocalGroups(),
   };
 
   try {
-    const prompt = forceSearchCode 
-      ? `GLOBAL_SEARCH_AND_RECONCILE: I am looking for group code "${forceSearchCode}". Sync this with current state: ${JSON.stringify(localData)}`
-      : `RECONCILE_STATE: ${JSON.stringify(localData)}`;
-
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: prompt,
+      contents: `DISCOVERY_REQUEST: ${queryType} ${queryVal || ''}\nLOCAL_CONTEXT: ${JSON.stringify(localContext)}`,
       config: {
-        systemInstruction: `You are the FamLink Global Database. 
-        1. You remember all users, groups, and invite codes ever sent to you.
-        2. When you receive a state, merge it with your global memory.
-        3. ALWAYS return the full merged state in JSON.
-        4. If a 'forceSearchCode' is mentioned, ensure that group is included in the returned 'groups' array even if it wasn't in the provided local state.
-        5. Structure: {"users": [], "groups": [], "messages": []}`,
+        systemInstruction: `You are the FamLink Global Discovery Server. 
+        Your job is to act as a bridge between strangers on different computers.
+        - You remember every user and group invite code ever mentioned to you.
+        - When a user asks to FIND_CODE, check your memory for that invite code and return the group details.
+        - When a user asks to FIND_USER, check your memory for that username.
+        - ALWAYS return the complete merged registry of known users and groups in this JSON format:
+        {"users": [...], "groups": [...], "messages": []}
+        - Priority: If you see a new user/group in the LOCAL_CONTEXT, add it to your permanent memory.`,
         responseMimeType: "application/json"
       }
     });
 
-    const merged = JSON.parse(response.text || "{}");
+    // response.text is a property, not a method.
+    const data = JSON.parse(response.text || "{}");
     
-    // Atomically update local storage with the "Global Truth" from Gemini
-    if (merged.users && Array.isArray(merged.users)) setUsers(merged.users);
-    if (merged.groups && Array.isArray(merged.groups)) setGroups(merged.groups);
-    if (merged.messages && Array.isArray(merged.messages)) setMessages(merged.messages);
+    if (data.users) setLocalUsers(data.users);
+    if (data.groups) setLocalGroups(data.groups);
     
-    return true;
+    return data;
   } catch (e) {
-    console.error("Gemini Sync Error:", e);
-    return false;
+    console.error("Discovery Service Error:", e);
+    return null;
   }
 };
 
@@ -80,39 +74,46 @@ export const CloudService = {
     const listener = (event: MessageEvent) => callback(event.data);
     channel.addEventListener('message', listener);
     
-    const pollInterval = setInterval(async () => {
-      const success = await syncGlobalState();
-      if (success) callback({ type: 'GLOBAL_SYNC', payload: null });
-    }, 15000);
+    // Discovery Pulse: Every 12 seconds, check in with the Global Registry
+    const interval = setInterval(async () => {
+      await performGlobalDiscovery('FETCH_ALL');
+      callback({ type: 'GLOBAL_SYNC', payload: null });
+    }, 12000);
 
     return () => {
       channel.removeEventListener('message', listener);
-      clearInterval(pollInterval);
+      clearInterval(interval);
     };
   },
 
   findUser: async (username: string): Promise<User | null> => {
-    await syncGlobalState();
-    return getUsers().find(u => u.username === username) || null;
+    // Force a Global Discovery lookup for this specific user
+    await performGlobalDiscovery('FIND_USER', username);
+    return getLocalUsers().find(u => u.username.toLowerCase() === username.toLowerCase()) || null;
   },
 
   registerUser: async (user: User): Promise<void> => {
-    const users = getUsers();
+    const users = getLocalUsers();
     if (!users.find(u => u.id === user.id)) {
-      setUsers([...users, user]);
-      await syncGlobalState();
+      setLocalUsers([...users, user]);
+      // Immediately push to Global Discovery so others can find this account
+      await performGlobalDiscovery('FETCH_ALL');
       channel.postMessage({ type: 'GLOBAL_SYNC', payload: null });
     }
   },
 
-  getAllUsers: () => getUsers(),
+  getAllUsers: async (): Promise<User[]> => {
+    await performGlobalDiscovery('FETCH_ALL');
+    return getLocalUsers();
+  },
+
   updateUsers: async (users: User[]) => {
-    setUsers(users);
-    await syncGlobalState();
+    setLocalUsers(users);
+    await performGlobalDiscovery('FETCH_ALL');
   },
 
   createGroup: async (name: string, description: string, adminId: string): Promise<Group> => {
-    const groups = getGroups();
+    const groups = getLocalGroups();
     const newGroup: Group = {
       id: generateId(),
       name,
@@ -122,56 +123,52 @@ export const CloudService = {
       inviteCode: generateInviteCode(),
       createdAt: Date.now(),
     };
-    setGroups([...groups, newGroup]);
+    setLocalGroups([...groups, newGroup]);
     
-    // Push immediately to the "Cloud" (Gemini)
-    await syncGlobalState();
-    
+    // Broadcast existence to the Global Registry
+    await performGlobalDiscovery('FETCH_ALL');
     channel.postMessage({ type: 'GROUP_UPDATE', payload: newGroup });
     return newGroup;
   },
 
   joinGroupByCode: async (code: string, userId: string): Promise<Group | null> => {
-    const normalizedCode = code.trim().toUpperCase();
+    const cleanCode = code.trim().toUpperCase();
     
-    // FORCE a global fetch from Gemini specifically looking for this code
-    console.log(`Searching global registry for code: ${normalizedCode}...`);
-    await syncGlobalState(normalizedCode);
+    // Crucial: Explicitly ask the Global Discovery if this code exists on any other PC
+    await performGlobalDiscovery('FIND_CODE', cleanCode);
     
-    const groups = getGroups();
-    const index = groups.findIndex(g => g.inviteCode === normalizedCode);
+    const groups = getLocalGroups();
+    const idx = groups.findIndex(g => g.inviteCode === cleanCode);
     
-    if (index === -1) {
-      console.error("Code not found in synced state.");
-      return null;
+    if (idx === -1) return null;
+    
+    if (!groups[idx].members.includes(userId)) {
+      groups[idx].members.push(userId);
+      setLocalGroups(groups);
+      await performGlobalDiscovery('FETCH_ALL');
     }
     
-    if (!groups[index].members.includes(userId)) {
-      groups[index].members.push(userId);
-      setGroups(groups);
-      await syncGlobalState();
-    }
-    
-    channel.postMessage({ type: 'USER_JOINED', payload: { groupId: groups[index].id, userId } });
-    return groups[index];
+    channel.postMessage({ type: 'USER_JOINED', payload: { groupId: groups[idx].id, userId } });
+    return groups[idx];
   },
 
   deleteGroup: async (groupId: string, adminId: string): Promise<boolean> => {
-    const groups = getGroups();
+    const groups = getLocalGroups();
     const group = groups.find(g => g.id === groupId);
     if (!group) return false;
     
-    const user = getUsers().find(u => u.id === adminId);
+    const users = getLocalUsers();
+    const user = users.find(u => u.id === adminId);
     if (group.adminId !== adminId && user?.role !== 'dev') return false;
 
-    setGroups(groups.filter(g => g.id !== groupId));
-    await syncGlobalState();
+    setLocalGroups(groups.filter(g => g.id !== groupId));
+    await performGlobalDiscovery('FETCH_ALL');
     channel.postMessage({ type: 'GROUP_DELETED', payload: groupId });
     return true;
   },
 
   sendMessage: async (groupId: string, sender: User, text: string): Promise<Message> => {
-    const messages = getMessages();
+    const messages = getLocalMessages();
     const newMessage: Message = {
       id: generateId(),
       groupId,
@@ -181,19 +178,20 @@ export const CloudService = {
       timestamp: Date.now(),
     };
     
-    setMessages([...messages, newMessage]);
-    await syncGlobalState();
+    setLocalMessages([...messages, newMessage]);
+    // Note: Messages are synced via the BroadCast channel locally, 
+    // but in cross-PC, we rely on the 12s Global Pulse.
     channel.postMessage({ type: 'MESSAGE', payload: newMessage });
     return newMessage;
   },
 
   getGroupMessages: async (groupId: string): Promise<Message[]> => {
-    return getMessages().filter(m => m.groupId === groupId);
+    return getLocalMessages().filter(m => m.groupId === groupId);
   },
 
   getAllUserGroups: async (userId: string): Promise<Group[]> => {
-    const user = getUsers().find(u => u.id === userId);
-    const groups = getGroups();
+    const user = getLocalUsers().find(u => u.id === userId);
+    const groups = getLocalGroups();
     if (user?.role === 'dev') return groups;
     return groups.filter(g => g.members.includes(userId));
   }

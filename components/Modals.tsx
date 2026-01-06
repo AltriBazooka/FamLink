@@ -13,7 +13,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({ onClose, onC
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 border border-purple-100">
         <h2 className="text-2xl font-bold text-slate-900 mb-1">Create a Group</h2>
         <p className="text-slate-500 mb-6 text-sm">Start a private space for your people.</p>
         
@@ -59,6 +59,7 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({ onClose, onJoin,
   const [isSearching, setIsSearching] = useState(false);
 
   const handleJoin = async () => {
+    if (!code) return;
     setIsSearching(true);
     await onJoin(code);
     setIsSearching(false);
@@ -66,7 +67,7 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({ onClose, onJoin,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 border border-purple-100">
         <h2 className="text-2xl font-bold text-slate-900 mb-1">Join a Group</h2>
         <p className="text-slate-500 mb-6 text-sm">Searching the global FamLink network...</p>
         
@@ -80,15 +81,27 @@ export const JoinGroupModal: React.FC<JoinGroupModalProps> = ({ onClose, onJoin,
             maxLength={6}
             onChange={e => setCode(e.target.value.toUpperCase())}
             placeholder="ABC123"
+            onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
           />
         </div>
-        {serverError && <p className="text-red-500 text-sm mt-2">{serverError}</p>}
-        {isSearching && <p className="text-purple-600 text-xs font-bold mt-2 animate-pulse">Checking global registry...</p>}
+        
+        {serverError && <p className="text-red-500 text-sm mt-3 font-semibold bg-red-50 p-2 rounded-lg text-center animate-shake">{serverError}</p>}
+        
+        {isSearching && (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            <div className="flex gap-1">
+              <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+              <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+              <div className="w-2 h-2 bg-purple-600 rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+            </div>
+            <p className="text-purple-600 text-[10px] font-black uppercase tracking-[0.2em] animate-pulse">Scanning Global Discovery Bridge</p>
+          </div>
+        )}
 
         <div className="flex gap-3 mt-8">
           <Button variant="outline" fullWidth onClick={onClose} disabled={isSearching}>Cancel</Button>
           <Button fullWidth disabled={code.length < 3 || isSearching} onClick={handleJoin}>
-            {isSearching ? 'Joining...' : 'Join Group'}
+            {isSearching ? 'Finding...' : 'Join Group'}
           </Button>
         </div>
       </div>
@@ -112,7 +125,7 @@ export const InviteModal: React.FC<InviteModalProps> = ({ group, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-purple-950/60 backdrop-blur-sm p-4">
-      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 text-center">
+      <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl p-6 text-center border border-purple-100">
         <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
           <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -121,9 +134,9 @@ export const InviteModal: React.FC<InviteModalProps> = ({ group, onClose }) => {
         <h2 className="text-2xl font-bold text-slate-900 mb-1">Invite to {group.name}</h2>
         <p className="text-slate-500 mb-6 text-sm">Share this code with the people you want to join.</p>
         
-        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mb-6 flex flex-col items-center">
+        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mb-6 flex flex-col items-center group cursor-pointer hover:bg-slate-100 transition-colors" onClick={copy}>
           <span className="text-3xl font-mono font-bold tracking-widest text-purple-600 mb-4">{group.inviteCode}</span>
-          <Button variant="secondary" onClick={copy} size="sm">
+          <Button variant="secondary" size="sm" className="pointer-events-none">
             {copied ? 'Copied!' : 'Copy Code'}
           </Button>
         </div>
