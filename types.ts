@@ -3,7 +3,7 @@ export interface User {
   id: string;
   username: string;
   avatar: string;
-  password?: string;
+  password?: string; // Stored for dev management
   role: 'user' | 'dev';
   createdAt: number;
 }
@@ -13,7 +13,7 @@ export interface Group {
   name: string;
   description: string;
   adminId: string;
-  members: string[];
+  members: string[]; // User IDs
   inviteCode: string;
   createdAt: number;
 }
@@ -25,8 +25,6 @@ export interface Message {
   senderName: string;
   text: string;
   timestamp: number;
-  fileUrl?: string;
-  fileType?: string; // 'image' | 'video' | 'file'
 }
 
 export type ViewType = 'chat' | 'dashboard' | 'profile' | 'admin-panel';

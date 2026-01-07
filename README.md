@@ -1,18 +1,20 @@
-# FamLink
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-FamLink is a private, secure communication platform designed for close-knit groups. 
+# Run and deploy your AI Studio app
 
-## Features
-- **Self-Administered Spaces**: Every user is the admin of the groups they create.
-- **Invite-Only Access**: Secure group entry via unique 6-digit alphanumeric codes.
-- **Real-time Messaging**: Powered by Supabase for instant communication.
-- **Media Support**: Share images, videos, and files seamlessly.
-- **AI Integration**: Built-in chat summarization and conversation starters powered by Gemini.
+This contains everything you need to run your app locally.
 
-## Tech Stack
-- **Frontend**: React 19, Tailwind CSS
-- **Backend**: Supabase (Database, Auth, Storage, Realtime)
-- **AI**: Google Gemini API
+View your app in AI Studio: https://ai.studio/apps/drive/1YlkWVVkUVqiiFgNiORc07Ga91Aasr5Bv
 
----
-*Database setup confirmed and active.*
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
