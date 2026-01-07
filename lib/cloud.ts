@@ -211,13 +211,17 @@ export const CloudService = {
   },
 
   getGroupMessages: async (groupId: string): Promise<Message[]> => {
+    // Explicitly select all columns. Use 'created_at' as the source for 'timestamp'.
     const { data, error } = await supabase
       .from('messages')
-      .select('*')
+      .select('id, group_id, sender_id, sender_name, text, file_url, file_type, created_at')
       .eq('group_id', groupId)
-      .order('timestamp', { ascending: true });
+      .order('created_at', { ascending: true });
       
-    if (error) return [];
+    if (error) {
+      console.error('Fetch messages error:', error);
+      return [];
+    }
     
     return (data || []).map(m => ({
       id: m.id, 
@@ -225,7 +229,7 @@ export const CloudService = {
       senderId: m.sender_id, 
       senderName: m.sender_name,
       text: m.text, 
-      timestamp: Date.parse(m.timestamp), 
+      timestamp: Date.parse(m.created_at), 
       fileUrl: m.file_url, 
       fileType: m.file_type
     }));
