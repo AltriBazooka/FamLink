@@ -13,9 +13,14 @@ export const CloudService = {
     const channel = supabase
       .channel('famlink-realtime')
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        callback({ type: 'GLOBAL_SYNC' });
+        console.log('Realtime change detected:', payload);
+        callback({ type: 'GLOBAL_SYNC', payload });
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('Connected to Supabase Realtime');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -24,7 +29,7 @@ export const CloudService = {
 
   uploadFile: async (file: File): Promise<{ url: string; type: string }> => {
     const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random()}.${fileExt}`;
+    const fileName = `${crypto.randomUUID()}.${fileExt}`;
     const filePath = `uploads/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -45,8 +50,18 @@ export const CloudService = {
   },
 
   findUser: async (username: string): Promise<User | null> => {
-    const { data, error } = await supabase.from('users').select('*').eq('username', username).maybeSingle();
-    if (error || !data) return null;
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .maybeSingle();
+      
+    if (error) {
+      console.error('Find user error:', error);
+      return null;
+    }
+    if (!data) return null;
+    
     return {
       id: data.id,
       username: data.username,
@@ -58,15 +73,24 @@ export const CloudService = {
   },
 
   registerUser: async (user: User): Promise<void> => {
-    await supabase.from('users').insert([{
-      id: user.id, username: user.username, password: user.password, avatar: user.avatar, role: user.role
+    const { error } = await supabase.from('users').insert([{
+      id: user.id, 
+      username: user.username, 
+      password: user.password, 
+      avatar: user.avatar, 
+      role: user.role
     }]);
+    if (error) throw error;
   },
 
   getAllUsers: async (): Promise<User[]> => {
     const { data } = await supabase.from('users').select('*');
     return (data || []).map(u => ({
-      id: u.id, username: u.username, avatar: u.avatar, role: u.role as 'user' | 'dev', createdAt: Date.parse(u.created_at)
+      id: u.id, 
+      username: u.username, 
+      avatar: u.avatar, 
+      role: u.role as 'user' | 'dev', 
+      createdAt: Date.parse(u.created_at)
     }));
   },
 
@@ -79,59 +103,138 @@ export const CloudService = {
   createGroup: async (name: string, description: string, adminId: string): Promise<Group> => {
     const groupId = crypto.randomUUID();
     const inviteCode = generateInviteCode();
-    await supabase.from('groups').insert([{ id: groupId, name, description, admin_id: adminId, invite_code: inviteCode }]);
-    await supabase.from('group_members').insert([{ group_id: groupId, user_id: adminId }]);
-    return { id: groupId, name, description, adminId, members: [adminId], inviteCode, createdAt: Date.now() };
+    
+    const { error: groupError } = await supabase.from('groups').insert([{ 
+      id: groupId, 
+      name, 
+      description, 
+      admin_id: adminId, 
+      invite_code: inviteCode 
+    }]);
+    if (groupError) throw groupError;
+
+    const { error: memberError } = await supabase.from('group_members').insert([{ 
+      group_id: groupId, 
+      user_id: adminId 
+    }]);
+    if (memberError) throw memberError;
+
+    return { 
+      id: groupId, 
+      name, 
+      description, 
+      adminId, 
+      members: [adminId], 
+      inviteCode, 
+      createdAt: Date.now() 
+    };
   },
 
   joinGroupByCode: async (code: string, userId: string): Promise<Group | null> => {
-    const { data: group } = await supabase.from('groups').select('*').eq('invite_code', code.toUpperCase()).maybeSingle();
-    if (!group) return null;
-    await supabase.from('group_members').upsert([{ group_id: group.id, user_id: userId }], { onConflict: 'group_id,user_id' });
+    const { data: group, error: groupError } = await supabase
+      .from('groups')
+      .select('*')
+      .eq('invite_code', code.toUpperCase())
+      .maybeSingle();
+      
+    if (groupError || !group) return null;
+    
+    const { error: memberError } = await supabase
+      .from('group_members')
+      .upsert([{ group_id: group.id, user_id: userId }], { onConflict: 'group_id,user_id' });
+      
+    if (memberError) throw memberError;
+    
     return CloudService.getGroupWithMembers(group.id);
   },
 
   getGroupWithMembers: async (groupId: string): Promise<Group | null> => {
-    const { data: group } = await supabase.from('groups').select('*, group_members (user_id)').eq('id', groupId).maybeSingle();
-    if (!group) return null;
+    const { data: group, error } = await supabase
+      .from('groups')
+      .select('*, group_members (user_id)')
+      .eq('id', groupId)
+      .maybeSingle();
+      
+    if (error || !group) return null;
+    
     return {
-      id: group.id, name: group.name, description: group.description, adminId: group.admin_id,
-      inviteCode: group.invite_code, createdAt: Date.parse(group.created_at),
+      id: group.id, 
+      name: group.name, 
+      description: group.description, 
+      adminId: group.admin_id,
+      inviteCode: group.invite_code, 
+      createdAt: Date.parse(group.created_at),
       members: group.group_members.map((m: any) => m.user_id)
     };
   },
 
   deleteGroup: async (groupId: string, adminId: string): Promise<boolean> => {
-    const { error } = await supabase.from('groups').delete().eq('id', groupId).eq('admin_id', adminId);
+    const { error } = await supabase
+      .from('groups')
+      .delete()
+      .eq('id', groupId)
+      .eq('admin_id', adminId);
     return !error;
   },
 
   sendMessage: async (groupId: string, sender: User, text: string, fileData?: { url: string; type: string }): Promise<Message> => {
     const id = crypto.randomUUID();
     const { error } = await supabase.from('messages').insert([{
-      id, group_id: groupId, sender_id: sender.id, sender_name: sender.username,
-      text, file_url: fileData?.url, file_type: fileData?.type
+      id, 
+      group_id: groupId, 
+      sender_id: sender.id, 
+      sender_name: sender.username,
+      text, 
+      file_url: fileData?.url, 
+      file_type: fileData?.type
     }]);
 
     if (error) throw error;
 
     return {
-      id, groupId, senderId: sender.id, senderName: sender.username,
-      text, timestamp: Date.now(), fileUrl: fileData?.url, fileType: fileData?.type
+      id, 
+      groupId, 
+      senderId: sender.id, 
+      senderName: sender.username,
+      text, 
+      timestamp: Date.now(), 
+      fileUrl: fileData?.url, 
+      fileType: fileData?.type
     };
   },
 
   getGroupMessages: async (groupId: string): Promise<Message[]> => {
-    const { data } = await supabase.from('messages').select('*').eq('group_id', groupId).order('timestamp', { ascending: true });
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('timestamp', { ascending: true });
+      
+    if (error) {
+      console.error('Fetch messages error:', error);
+      return [];
+    }
+    
     return (data || []).map(m => ({
-      id: m.id, groupId: m.group_id, senderId: m.sender_id, senderName: m.sender_name,
-      text: m.text, timestamp: Date.parse(m.timestamp), fileUrl: m.file_url, fileType: m.file_type
+      id: m.id, 
+      groupId: m.group_id, 
+      senderId: m.sender_id, 
+      senderName: m.sender_name,
+      text: m.text, 
+      timestamp: Date.parse(m.timestamp), 
+      fileUrl: m.file_url, 
+      fileType: m.file_type
     }));
   },
 
   getAllUserGroups: async (userId: string): Promise<Group[]> => {
-    const { data } = await supabase.from('group_members').select('group_id').eq('user_id', userId);
-    if (!data) return [];
+    const { data, error } = await supabase
+      .from('group_members')
+      .select('group_id')
+      .eq('user_id', userId);
+      
+    if (error || !data) return [];
+    
     const results: Group[] = [];
     for (const item of data) {
       const g = await CloudService.getGroupWithMembers(item.group_id);
