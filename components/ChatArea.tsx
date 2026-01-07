@@ -70,8 +70,8 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     try {
       const fileData = await CloudService.uploadFile(file);
       onSendMessage(`Sent a ${fileData.type}`, fileData);
-    } catch (err) {
-      alert("Failed to upload file. Make sure storage bucket exists.");
+    } catch (err: any) {
+      alert(err.message || "Failed to upload file.");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -153,6 +153,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       </div>
 
       <div className="p-6 border-t border-purple-50 bg-white">
+        {summary && (
+          <div className="mb-4 p-4 bg-purple-50 rounded-2xl border border-purple-100 text-sm relative">
+            <button onClick={() => setSummary(null)} className="absolute top-2 right-2 text-purple-300 hover:text-purple-600">×</button>
+            <strong className="text-purple-700 block mb-1">AI Summary</strong>
+            <p className="text-slate-600">{summary}</p>
+          </div>
+        )}
         <div className="max-w-5xl mx-auto flex items-center gap-3">
           <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,video/*,application/pdf" />
           <button onClick={() => fileInputRef.current?.click()} className="p-3 bg-slate-100 text-slate-400 rounded-2xl hover:bg-purple-50 hover:text-purple-600 transition-all">

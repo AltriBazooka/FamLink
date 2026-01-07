@@ -29,17 +29,24 @@ export const CloudService = {
 
   uploadFile: async (file: File): Promise<{ url: string; type: string }> => {
     const fileExt = file.name.split('.').pop();
-    const fileName = `${crypto.randomUUID()}.${fileExt}`;
-    const filePath = `uploads/${fileName}`;
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const filePath = fileName;
 
-    console.log('Attempting upload to bucket: famlink-files');
-    const { error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('famlink-files')
-      .upload(filePath, file);
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
 
     if (uploadError) {
-      console.error('Supabase Upload Error:', uploadError);
-      throw new Error(`Upload failed: ${uploadError.message}. Ensure the "famlink-files" bucket exists and is set to Public in Supabase.`);
+      console.error('Storage Error:', uploadError);
+      const msg = uploadError.message.toLowerCase();
+      
+      if (msg.includes('row-level security') || msg.includes('permission denied')) {
+        throw new Error('Upload Permission Denied. Please ensure your Supabase Storage Policies (INSERT and SELECT) are both set to "true".');
+      }
+      throw new Error(`Upload failed: ${uploadError.message}`);
     }
 
     const { data } = supabase.storage
@@ -60,11 +67,7 @@ export const CloudService = {
       .eq('username', username)
       .maybeSingle();
       
-    if (error) {
-      console.error('Find user error:', error);
-      return null;
-    }
-    if (!data) return null;
+    if (error || !data) return null;
     
     return {
       id: data.id,
@@ -214,10 +217,7 @@ export const CloudService = {
       .eq('group_id', groupId)
       .order('timestamp', { ascending: true });
       
-    if (error) {
-      console.error('Fetch messages error:', error);
-      return [];
-    }
+    if (error) return [];
     
     return (data || []).map(m => ({
       id: m.id, 
