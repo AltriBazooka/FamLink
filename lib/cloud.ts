@@ -32,11 +32,15 @@ export const CloudService = {
     const fileName = `${crypto.randomUUID()}.${fileExt}`;
     const filePath = `uploads/${fileName}`;
 
+    console.log('Attempting upload to bucket: famlink-files');
     const { error: uploadError } = await supabase.storage
       .from('famlink-files')
       .upload(filePath, file);
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      console.error('Supabase Upload Error:', uploadError);
+      throw new Error(`Upload failed: ${uploadError.message}. Ensure the "famlink-files" bucket exists and is set to Public in Supabase.`);
+    }
 
     const { data } = supabase.storage
       .from('famlink-files')
